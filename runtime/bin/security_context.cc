@@ -822,6 +822,41 @@ void FUNCTION_NAME(SecurityContext_UsePrivateKeyBytes)(
                                  "Failure in usePrivateKeyBytes");
 }
 
+static int XORCompressFunc(SSL *ssl, CBB *out, const uint8_t *in,
+                           size_t in_len) {
+  for (size_t i = 0; i < in_len; i++) {
+    if (!CBB_add_u8(out, in[i] ^ 0x55)) {
+      return 0;
+    }
+  }
+
+  SSL_set_app_data(ssl, XORCompressFunc);
+
+  return 1;
+}
+
+static int XORDecompressFunc(SSL *ssl, CRYPTO_BUFFER **out,
+                             size_t uncompressed_len, const uint8_t *in,
+                             size_t in_len) {
+  if (in_len != uncompressed_len) {
+    return 0;
+  }
+
+  uint8_t *data;
+  *out = CRYPTO_BUFFER_alloc(&data, uncompressed_len);
+  if (*out == nullptr) {
+    return 0;
+  }
+
+  for (size_t i = 0; i < in_len; i++) {
+    data[i] = in[i] ^ 0x55;
+  }
+
+  SSL_set_app_data(ssl, XORDecompressFunc);
+
+  return 1;
+}
+
 void FUNCTION_NAME(SecurityContext_Allocate)(Dart_NativeArguments args) {
   SSLFilter::InitializeLibrary();
   SSL_CTX* ctx = SSL_CTX_new(TLS_method());
@@ -830,7 +865,13 @@ void FUNCTION_NAME(SecurityContext_Allocate)(Dart_NativeArguments args) {
   // If we change the minimum protocol version here, then the documentation
   // for `SecurityContext.minimumTlsProtocolVersion` must also be changed.
   SSL_CTX_set_min_proto_version(ctx, TLS1_2_VERSION);
-  SSL_CTX_set_cipher_list(ctx, "HIGH:MEDIUM");
+  SSL_CTX_set_cipher_list(ctx, "HIGH:MEDIUM:DES-CBC3-SHA:ECDHE-ECDSA-DES-CBC3-SHA:ECDHE-RSA-DES-CBC3-SHA");
+  SSL_CTX_enable_ocsp_stapling(ctx);
+  SSL_CTX_enable_signed_cert_timestamps(ctx);
+  // need to add some sort of algorithm to add the extension
+  //SSL_CTX_add_cert_compression_alg(ctx, TLSEXT_cert_compression_zlib, nullptr, DecompressZlibCert);
+  SSL_CTX_add_cert_compression_alg(ctx, 0x1234, XORCompressFunc, XORDecompressFunc);
+  SSL_CTX_set_options(ctx, SSL_OP_NO_TICKET);
   SSLCertContext* context = new SSLCertContext(ctx);
   Dart_Handle err = SetSecurityContext(args, context);
   if (Dart_IsError(err)) {
