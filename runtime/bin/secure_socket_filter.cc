@@ -521,6 +521,11 @@ void SSLFilter::Connect(const char* hostname,
   SSL_set_bio(ssl_, ssl_side, ssl_side);
   SSL_set_mode(ssl_, SSL_MODE_AUTO_RETRY);  // TODO(whesse): Is this right?
   SSL_set_ex_data(ssl_, filter_ssl_index, this);
+#ifdef DART_TARGET_OS_ANDROID
+  SSL_set_enable_ech_grease(ssl_, 1);
+#else
+  SSL_set_enable_ech_grease(ssl_, 0);
+#endif
 
   if (context->allow_tls_renegotiation()) {
     SSL_set_renegotiate_mode(ssl_, ssl_renegotiate_freely);

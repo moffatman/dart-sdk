@@ -12,6 +12,8 @@
 #include <openssl/ssl.h>
 #include <openssl/x509.h>
 
+#include <zlib/zlib.h>
+
 #include "platform/globals.h"
 
 #include "bin/directory.h"
@@ -523,6 +525,21 @@ void SSLCertContext::SetAlpnProtocolList(Dart_Handle protocols_handle,
       if (ssl != nullptr) {
         ASSERT(context == nullptr);
         status = SSL_set_alpn_protos(ssl, protocol_string, protocol_string_len);
+#if defined(DART_TARGET_OS_ANDROID)
+        // Android JA4 needs the ALPS too. instead of adjusting Dart API, just hack it.
+        uint8_t *end = protocol_string + protocol_string_len;
+        uint8_t *ptr = protocol_string;
+        while (ptr < end) {
+          intptr_t len = ptr[0];
+          if (len == 2 && ptr[1] == 'h' && ptr[2] == '2') {
+            ASSERT(status == 0);  // The function returns a non-standard status.
+            const uint8_t proto[] = {'h', '2'};
+            status = !SSL_add_application_settings(ssl, proto, sizeof(proto), nullptr, 0);
+            break;
+          }
+          ptr += len;
+        }
+#endif
       } else {
         ASSERT(context != nullptr);
         ASSERT(ssl == nullptr);
@@ -822,37 +839,47 @@ void FUNCTION_NAME(SecurityContext_UsePrivateKeyBytes)(
                                  "Failure in usePrivateKeyBytes");
 }
 
-static int XORCompressFunc(SSL *ssl, CBB *out, const uint8_t *in,
+static int zlib_compress(SSL *ssl, CBB *out, const uint8_t *in,
                            size_t in_len) {
-  for (size_t i = 0; i < in_len; i++) {
-    if (!CBB_add_u8(out, in[i] ^ 0x55)) {
-      return 0;
-    }
+  unsigned long out_len = compressBound(in_len);
+  uint8_t *out_buf;
+  if (!CBB_reserve(out, &out_buf, out_len)) {
+    return 0;
   }
 
-  SSL_set_app_data(ssl, XORCompressFunc);
+  if (compress(out_buf, &out_len, in, in_len) != Z_OK) {
+    return 0;
+  }
+
+  if (!CBB_did_write(out, out_len)) {
+    return 0;
+  }
+
+  SSL_set_app_data(ssl, zlib_compress);
 
   return 1;
 }
 
-static int XORDecompressFunc(SSL *ssl, CRYPTO_BUFFER **out,
+static int zlib_decompress(SSL *ssl, CRYPTO_BUFFER **out,
                              size_t uncompressed_len, const uint8_t *in,
                              size_t in_len) {
-  if (in_len != uncompressed_len) {
-    return 0;
-  }
+  unsigned long len = uncompressed_len;
 
   uint8_t *data;
-  *out = CRYPTO_BUFFER_alloc(&data, uncompressed_len);
+  *out = CRYPTO_BUFFER_alloc(&data, len);
   if (*out == nullptr) {
     return 0;
   }
 
-  for (size_t i = 0; i < in_len; i++) {
-    data[i] = in[i] ^ 0x55;
+  if (uncompress(data, &len, in, in_len) != Z_OK) {
+    return 0;
   }
 
-  SSL_set_app_data(ssl, XORDecompressFunc);
+  if (len != uncompressed_len) {
+    return 0;
+  }
+
+  SSL_set_app_data(ssl, zlib_decompress);
 
   return 1;
 }
@@ -865,13 +892,20 @@ void FUNCTION_NAME(SecurityContext_Allocate)(Dart_NativeArguments args) {
   // If we change the minimum protocol version here, then the documentation
   // for `SecurityContext.minimumTlsProtocolVersion` must also be changed.
   SSL_CTX_set_min_proto_version(ctx, TLS1_2_VERSION);
+#if defined(DART_TARGET_OS_ANDROID)
+  SSL_CTX_set_cipher_list(ctx, "HIGH:MEDIUM:-ECDHE-ECDSA-AES256-SHA:-ECDHE-ECDSA-AES128-SHA");
+#else
   SSL_CTX_set_cipher_list(ctx, "HIGH:MEDIUM:DES-CBC3-SHA:ECDHE-ECDSA-DES-CBC3-SHA:ECDHE-RSA-DES-CBC3-SHA");
+#endif
   SSL_CTX_enable_ocsp_stapling(ctx);
   SSL_CTX_enable_signed_cert_timestamps(ctx);
   // need to add some sort of algorithm to add the extension
-  //SSL_CTX_add_cert_compression_alg(ctx, TLSEXT_cert_compression_zlib, nullptr, DecompressZlibCert);
-  SSL_CTX_add_cert_compression_alg(ctx, 0x1234, XORCompressFunc, XORDecompressFunc);
+  // TODO: Android should be brotli here
+  SSL_CTX_add_cert_compression_alg(ctx, TLSEXT_cert_compression_zlib, zlib_compress, zlib_decompress);
+  SSL_CTX_set_grease_enabled(ctx, 1);
+#if !defined(DART_TARGET_OS_ANDROID)
   SSL_CTX_set_options(ctx, SSL_OP_NO_TICKET);
+#endif
   SSLCertContext* context = new SSLCertContext(ctx);
   Dart_Handle err = SetSecurityContext(args, context);
   if (Dart_IsError(err)) {
