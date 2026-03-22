@@ -627,7 +627,10 @@ class RawSocketOption {
 @patch
 class SecurityContext {
   @patch
-  factory SecurityContext({bool withTrustedRoots = false}) {
+  factory SecurityContext({
+    bool withTrustedRoots = false,
+    bool withCertCompression = true
+  }) {
     throw UnsupportedError("SecurityContext constructor");
   }
 

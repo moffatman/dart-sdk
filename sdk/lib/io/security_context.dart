@@ -56,7 +56,10 @@ abstract final class SecurityContext {
   /// be used instead. However, if the [SecurityContext] containing the trusted
   /// root certificates must be modified per-connection, then [withTrustedRoots]
   /// should be used.
-  external factory SecurityContext({bool withTrustedRoots = false});
+  external factory SecurityContext({
+    bool withTrustedRoots = false,
+    bool withCertCompression = true
+  });
 
   /// The default security context used by most operation requiring one.
   ///
