@@ -899,9 +899,6 @@ void FUNCTION_NAME(SecurityContext_Allocate)(Dart_NativeArguments args) {
 #endif
   SSL_CTX_enable_ocsp_stapling(ctx);
   SSL_CTX_enable_signed_cert_timestamps(ctx);
-  // need to add some sort of algorithm to add the extension
-  // TODO: Android should be brotli here
-  SSL_CTX_add_cert_compression_alg(ctx, TLSEXT_cert_compression_zlib, zlib_compress, zlib_decompress);
   SSL_CTX_set_grease_enabled(ctx, 1);
 #if !defined(DART_TARGET_OS_ANDROID)
   SSL_CTX_set_options(ctx, SSL_OP_NO_TICKET);
@@ -960,6 +957,17 @@ void FUNCTION_NAME(SecurityContext_TrustBuiltinRoots)(
   ASSERT(context != nullptr);
 
   context->TrustBuiltinRoots();
+}
+
+void FUNCTION_NAME(SecurityContext_AddCertCompression)(
+    Dart_NativeArguments args) {
+  SSLCertContext* context = SSLCertContext::GetSecurityContext(args);
+
+  ASSERT(context != nullptr);
+
+  // need to add some sort of algorithm to add the extension
+  // TODO: Android should be brotli here
+  SSL_CTX_add_cert_compression_alg(context->context(), TLSEXT_cert_compression_zlib, zlib_compress, zlib_decompress);
 }
 
 void FUNCTION_NAME(SecurityContext_SetAllowTlsRenegotiation)(

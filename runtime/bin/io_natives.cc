@@ -136,6 +136,7 @@ namespace bin {
   V(SecurityContext_SetClientAuthoritiesBytes, 3)                              \
   V(SecurityContext_SetTrustedCertificatesBytes, 3)                            \
   V(SecurityContext_TrustBuiltinRoots, 1)                                      \
+  V(SecurityContext_AddCertCompression, 1)                                     \
   V(SecurityContext_SetAllowTlsRenegotiation, 2)                               \
   V(SecurityContext_SetMinimumProtocolVersion, 2)                              \
   V(SecurityContext_GetMinimumProtocolVersion, 1)                              \

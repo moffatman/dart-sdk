@@ -201,8 +201,11 @@ base class _SecureFilterImpl extends NativeFieldWrapperClass1
 @patch
 class SecurityContext {
   @patch
-  factory SecurityContext({bool withTrustedRoots = false}) {
-    return _SecurityContext(withTrustedRoots);
+  factory SecurityContext({
+    bool withTrustedRoots = false,
+    bool withCertCompression = true
+  }) {
+    return _SecurityContext(withTrustedRoots, withCertCompression);
   }
 
   @patch
@@ -218,10 +221,13 @@ base class _SecurityContext extends NativeFieldWrapperClass1
     implements SecurityContext {
   bool _allowLegacyUnsafeRenegotiation = false;
 
-  _SecurityContext(bool withTrustedRoots) {
+  _SecurityContext(bool withTrustedRoots, bool withCertCompression) {
     _createNativeContext();
     if (withTrustedRoots) {
       _trustBuiltinRoots();
+    }
+    if (withCertCompression) {
+      _addCertCompression();
     }
   }
 
@@ -244,7 +250,7 @@ base class _SecurityContext extends NativeFieldWrapperClass1
   @pragma("vm:external-name", "SecurityContext_Allocate")
   external void _createNativeContext();
 
-  static final SecurityContext defaultContext = _SecurityContext(true);
+  static final SecurityContext defaultContext = _SecurityContext(true, true);
 
   void usePrivateKey(String file, {String? password}) {
     List<int> bytes = (File(file)).readAsBytesSync();
@@ -298,6 +304,8 @@ base class _SecurityContext extends NativeFieldWrapperClass1
   external void _setAlpnProtocols(Uint8List protocols, bool isServer);
   @pragma("vm:external-name", "SecurityContext_TrustBuiltinRoots")
   external void _trustBuiltinRoots();
+  @pragma("vm:external-name", "SecurityContext_AddCertCompression")
+  external void _addCertCompression();
   @pragma("vm:external-name", "SecurityContext_SetAllowTlsRenegotiation")
   external void _setAllowTlsRenegotiation(bool allow);
   @pragma("vm:external-name", "SecurityContext_SetMinimumProtocolVersion")
