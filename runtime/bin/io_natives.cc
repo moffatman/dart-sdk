@@ -118,7 +118,7 @@ namespace bin {
   V(ProcessInfo_CurrentRSS, 0)                                                 \
   V(ProcessInfo_MaxRSS, 0)                                                     \
   V(RawSocketOption_GetOptionValue, 1)                                         \
-  V(SecureSocket_Connect, 7)                                                   \
+  V(SecureSocket_Connect, 10)                                                  \
   V(SecureSocket_Destroy, 1)                                                   \
   V(SecureSocket_FilterPointer, 1)                                             \
   V(SecureSocket_GetSelectedProtocol, 1)                                       \
@@ -134,12 +134,18 @@ namespace bin {
   V(SecurityContext_UsePrivateKeyBytes, 3)                                     \
   V(SecurityContext_SetAlpnProtocols, 3)                                       \
   V(SecurityContext_SetClientAuthoritiesBytes, 3)                              \
+  V(SecurityContext_SetCiphers, 2)                                             \
+  V(SecurityContext_SetVerifyAlgorithms, 2)                                    \
   V(SecurityContext_SetTrustedCertificatesBytes, 3)                            \
   V(SecurityContext_TrustBuiltinRoots, 1)                                      \
   V(SecurityContext_AddCertCompression, 1)                                     \
   V(SecurityContext_SetAllowTlsRenegotiation, 2)                               \
   V(SecurityContext_SetMinimumProtocolVersion, 2)                              \
   V(SecurityContext_GetMinimumProtocolVersion, 1)                              \
+  V(SecurityContext_SetMaximumProtocolVersion, 2)                              \
+  V(SecurityContext_GetMaximumProtocolVersion, 1)                              \
+  V(SecurityContext_SetUseGrease, 2)                                           \
+  V(SecurityContext_SetAlwaysAddPadding, 2)                                    \
   V(SecurityContext_UseCertificateChainBytes, 3)                               \
   V(ServerSocket_Accept, 2)                                                    \
   V(ServerSocket_CreateBindListen, 7)                                          \

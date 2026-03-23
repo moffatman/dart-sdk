@@ -112,6 +112,11 @@ void FUNCTION_NAME(SecureSocket_Connect)(Dart_NativeArguments args) {
   bool require_client_certificate =
       DartUtils::GetBooleanValue(Dart_GetNativeArgument(args, 5));
   Dart_Handle protocols_handle = ThrowIfError(Dart_GetNativeArgument(args, 6));
+  Dart_Handle settings_handle = ThrowIfError(Dart_GetNativeArgument(args, 7));
+  bool use_new_alps_codepoint =
+      DartUtils::GetBooleanValue(Dart_GetNativeArgument(args, 8));
+  bool use_ech_grease =
+      DartUtils::GetBooleanValue(Dart_GetNativeArgument(args, 9));
 
   const char* host_name = nullptr;
   // TODO(whesse): Is truncating a Dart string containing \0 what we want?
@@ -127,9 +132,12 @@ void FUNCTION_NAME(SecureSocket_Connect)(Dart_NativeArguments args) {
   // The protocols_handle is guaranteed to be a valid Uint8List.
   // It will have the correct length encoding of the protocols array.
   ASSERT(!Dart_IsNull(protocols_handle));
+  ASSERT(!Dart_IsNull(settings_handle));
   GetFilter(args)->Connect(host_name, context, is_server,
                            request_client_certificate,
-                           require_client_certificate, protocols_handle);
+                           require_client_certificate, protocols_handle,
+                           settings_handle, use_new_alps_codepoint,
+                           use_ech_grease);
 }
 
 void FUNCTION_NAME(SecureSocket_Destroy)(Dart_NativeArguments args) {
@@ -501,7 +509,10 @@ void SSLFilter::Connect(const char* hostname,
                         bool is_server,
                         bool request_client_certificate,
                         bool require_client_certificate,
-                        Dart_Handle protocols_handle) {
+                        Dart_Handle protocols_handle,
+                        Dart_Handle settings_handle,
+                        bool use_new_alps_codepoint,
+                        bool use_ech_grease) {
   is_server_ = is_server;
   if (in_handshake_) {
     FATAL("Connect called twice on the same _SecureFilter.");
@@ -521,12 +532,8 @@ void SSLFilter::Connect(const char* hostname,
   SSL_set_bio(ssl_, ssl_side, ssl_side);
   SSL_set_mode(ssl_, SSL_MODE_AUTO_RETRY);  // TODO(whesse): Is this right?
   SSL_set_ex_data(ssl_, filter_ssl_index, this);
-#ifdef DART_TARGET_OS_ANDROID
-  SSL_set_enable_ech_grease(ssl_, 1);
-#else
-  SSL_set_enable_ech_grease(ssl_, 0);
-#endif
-
+  SSL_set_enable_ech_grease(ssl_, use_ech_grease);
+  SSL_set_alps_use_new_codepoint(ssl_, use_new_alps_codepoint);
   if (context->allow_tls_renegotiation()) {
     SSL_set_renegotiate_mode(ssl_, ssl_renegotiate_freely);
   }
@@ -542,6 +549,7 @@ void SSLFilter::Connect(const char* hostname,
     SSL_set_verify(ssl_, certificate_mode, nullptr);
   } else {
     SSLCertContext::SetAlpnProtocolList(protocols_handle, ssl_, nullptr, false);
+    SSLCertContext::SetAlps(settings_handle, ssl_);
     status = SSL_set_tlsext_host_name(ssl_, hostname);
     SecureSocketUtils::CheckStatusSSL(status, "TlsException",
                                       "Set SNI host name", ssl_);

@@ -58,6 +58,9 @@ abstract interface class SecureSocket implements Socket {
     bool onBadCertificate(X509Certificate certificate)?,
     void keyLog(String line)?,
     List<String>? supportedProtocols,
+    Map<String, Uint8List>? protocolSettings,
+    bool? useNewAlpsCodePoint,
+    bool? useEchGrease,
     Duration? timeout,
   }) {
     return RawSecureSocket.connect(
@@ -67,6 +70,9 @@ abstract interface class SecureSocket implements Socket {
       onBadCertificate: onBadCertificate,
       keyLog: keyLog,
       supportedProtocols: supportedProtocols,
+      protocolSettings: protocolSettings,
+      useNewAlpsCodePoint: useNewAlpsCodePoint,
+      useEchGrease: useEchGrease,
       timeout: timeout,
     ).then((rawSocket) => SecureSocket._(rawSocket));
   }
@@ -81,6 +87,9 @@ abstract interface class SecureSocket implements Socket {
     bool onBadCertificate(X509Certificate certificate)?,
     void keyLog(String line)?,
     List<String>? supportedProtocols,
+    Map<String, Uint8List>? protocolSettings,
+    bool? useNewAlpsCodePoint,
+    bool? useEchGrease,
   }) {
     return RawSecureSocket.startConnect(
       host,
@@ -89,6 +98,9 @@ abstract interface class SecureSocket implements Socket {
       onBadCertificate: onBadCertificate,
       keyLog: keyLog,
       supportedProtocols: supportedProtocols,
+      protocolSettings: protocolSettings,
+      useNewAlpsCodePoint: useNewAlpsCodePoint,
+      useEchGrease: useEchGrease,
     ).then((rawState) {
       Future<SecureSocket> socket = rawState.socket.then(
         (rawSocket) => SecureSocket._(rawSocket),
@@ -156,6 +168,9 @@ abstract interface class SecureSocket implements Socket {
     bool onBadCertificate(X509Certificate certificate)?,
     void keyLog(String line)?,
     List<String>? supportedProtocols,
+    Map<String, Uint8List>? protocolSettings,
+    bool? useNewAlpsCodePoint,
+    bool? useEchGrease,
   }) {
     return socket
         ._detachRaw()
@@ -168,6 +183,9 @@ abstract interface class SecureSocket implements Socket {
             onBadCertificate: onBadCertificate,
             keyLog: keyLog,
             supportedProtocols: supportedProtocols,
+            protocolSettings: protocolSettings,
+            useNewAlpsCodePoint: useNewAlpsCodePoint,
+            useEchGrease: useEchGrease,
           );
         })
         .then<SecureSocket>((raw) => SecureSocket._(raw));
@@ -306,6 +324,9 @@ abstract interface class RawSecureSocket implements RawSocket {
     bool onBadCertificate(X509Certificate certificate)?,
     void keyLog(String line)?,
     List<String>? supportedProtocols,
+    Map<String, Uint8List>? protocolSettings,
+    bool? useNewAlpsCodePoint,
+    bool? useEchGrease,
     Duration? timeout,
   }) {
     _RawSecureSocket._verifyFields(host, port, false, false);
@@ -316,6 +337,9 @@ abstract interface class RawSecureSocket implements RawSocket {
         onBadCertificate: onBadCertificate,
         keyLog: keyLog,
         supportedProtocols: supportedProtocols,
+        protocolSettings: protocolSettings,
+        useNewAlpsCodePoint: useNewAlpsCodePoint,
+        useEchGrease: useEchGrease,
       );
     });
   }
@@ -330,6 +354,9 @@ abstract interface class RawSecureSocket implements RawSocket {
     bool onBadCertificate(X509Certificate certificate)?,
     void keyLog(String line)?,
     List<String>? supportedProtocols,
+    Map<String, Uint8List>? protocolSettings,
+    bool? useNewAlpsCodePoint,
+    bool? useEchGrease,
   }) {
     return RawSocket.startConnect(host, port).then((
       ConnectionTask<RawSocket> rawState,
@@ -341,6 +368,9 @@ abstract interface class RawSecureSocket implements RawSocket {
           onBadCertificate: onBadCertificate,
           keyLog: keyLog,
           supportedProtocols: supportedProtocols,
+          protocolSettings: protocolSettings,
+          useEchGrease: useEchGrease,
+          useNewAlpsCodePoint: useNewAlpsCodePoint,
         );
       });
       return ConnectionTask<RawSecureSocket>._(socket, rawState._onCancel);
@@ -407,6 +437,9 @@ abstract interface class RawSecureSocket implements RawSocket {
     bool onBadCertificate(X509Certificate certificate)?,
     void keyLog(String line)?,
     List<String>? supportedProtocols,
+    Map<String, Uint8List>? protocolSettings,
+    bool? useNewAlpsCodePoint,
+    bool? useEchGrease,
   }) {
     socket.readEventsEnabled = false;
     socket.writeEventsEnabled = false;
@@ -420,6 +453,9 @@ abstract interface class RawSecureSocket implements RawSocket {
       onBadCertificate: onBadCertificate,
       keyLog: keyLog,
       supportedProtocols: supportedProtocols,
+      protocolSettings: protocolSettings,
+      useNewAlpsCodePoint: useNewAlpsCodePoint,
+      useEchGrease: useEchGrease,
     );
   }
 
@@ -605,6 +641,9 @@ class _RawSecureSocket extends Stream<RawSocketEvent>
     bool onBadCertificate(X509Certificate certificate)?,
     void keyLog(String line)?,
     List<String>? supportedProtocols,
+    Map<String, Uint8List>? protocolSettings,
+    bool? useNewAlpsCodePoint,
+    bool? useEchGrease,
   }) {
     _verifyFields(
       host,
@@ -630,6 +669,14 @@ class _RawSecureSocket extends Stream<RawSocketEvent>
       onBadCertificate,
       keyLog,
       supportedProtocols,
+      protocolSettings ?? {
+        // Fallback when building chance master branch
+        if (Platform.isAndroid && (supportedProtocols?.contains('h2') ?? false))
+          'h2': Uint8List(0)
+      },
+      useNewAlpsCodePoint ?? true,
+      // Fallback when building with chance master
+      useEchGrease ?? Platform.isAndroid
     )._handshakeComplete.future;
   }
 
@@ -646,6 +693,9 @@ class _RawSecureSocket extends Stream<RawSocketEvent>
     this.onBadCertificate,
     this.keyLog,
     List<String>? supportedProtocols,
+    Map<String, Uint8List> protocolSettings,
+    bool useNewAlpsCodePoint,
+    bool useEchGrease,
   ) {
     _controller
       ..onListen = _onSubscriptionStateChange
@@ -709,6 +759,7 @@ class _RawSecureSocket extends Stream<RawSocketEvent>
       var encodedProtocols = SecurityContext._protocolsToLengthEncoding(
         supportedProtocols,
       );
+      var encodedProtocolSettings = protocolSettings.entries.map((e) => [utf8.encode(e.key), e.value]).toList();
       secureFilter.connect(
         address.host,
         context,
@@ -716,6 +767,9 @@ class _RawSecureSocket extends Stream<RawSocketEvent>
         requestClientCertificate || requireClientCertificate,
         requireClientCertificate,
         encodedProtocols,
+        encodedProtocolSettings,
+        useNewAlpsCodePoint,
+        useEchGrease,
       );
       _secureHandshake();
     } catch (e, s) {
@@ -1437,6 +1491,9 @@ abstract class _SecureFilter {
     bool requestClientCertificate,
     bool requireClientCertificate,
     Uint8List protocols,
+    List<List<Uint8List>> protocolSettings,
+    bool useNewAlpsCodePoint,
+    bool useEchGrease,
   );
   void destroy();
   Future<bool> handshake();

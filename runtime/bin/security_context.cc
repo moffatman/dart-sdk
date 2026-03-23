@@ -525,21 +525,6 @@ void SSLCertContext::SetAlpnProtocolList(Dart_Handle protocols_handle,
       if (ssl != nullptr) {
         ASSERT(context == nullptr);
         status = SSL_set_alpn_protos(ssl, protocol_string, protocol_string_len);
-#if defined(DART_TARGET_OS_ANDROID)
-        // Android JA4 needs the ALPS too. instead of adjusting Dart API, just hack it.
-        uint8_t *end = protocol_string + protocol_string_len;
-        uint8_t *ptr = protocol_string;
-        while (ptr < end) {
-          intptr_t len = ptr[0];
-          if (len == 2 && ptr[1] == 'h' && ptr[2] == '2') {
-            ASSERT(status == 0);  // The function returns a non-standard status.
-            const uint8_t proto[] = {'h', '2'};
-            status = !SSL_add_application_settings(ssl, proto, sizeof(proto), nullptr, 0);
-            break;
-          }
-          ptr += len;
-        }
-#endif
       } else {
         ASSERT(context != nullptr);
         ASSERT(ssl == nullptr);
@@ -550,6 +535,76 @@ void SSLCertContext::SetAlpnProtocolList(Dart_Handle protocols_handle,
     }
   }
   Dart_TypedDataReleaseData(protocols_handle);
+}
+
+// Sets the settings map for ALPS on a SSL object or a context.
+void SSLCertContext::SetAlps(Dart_Handle settings_handle,
+                             SSL* ssl) {
+  // Enable ALPS (application layer protocol settings) if the caller provides
+  // a valid map of supported settings.
+  intptr_t settings_len = 0;
+  Dart_Handle result = Dart_ListLength(settings_handle, &settings_len);
+  if (Dart_IsError(result)) {
+    Dart_PropagateError(result);
+  }
+
+  for (intptr_t i = 0; i < settings_len; i++) {
+    Dart_Handle member = Dart_ListGetAt(settings_handle, i);
+    if (Dart_IsError(member)) {
+      Dart_PropagateError(member);
+    }
+
+    Dart_Handle protocol_handle = Dart_ListGetAt(member, 0);
+    if (Dart_IsError(protocol_handle)) {
+      Dart_PropagateError(protocol_handle);
+    }
+
+    Dart_TypedData_Type type;
+
+    uint8_t* protocol_string;
+    intptr_t protocol_string_len = 0;
+
+    result = Dart_TypedDataAcquireData(protocol_handle, &type,
+        reinterpret_cast<void**>(&protocol_string), &protocol_string_len);
+    if (Dart_IsError(result)) {
+      Dart_PropagateError(result);
+    }
+
+    if (type != Dart_TypedData_kUint8) {
+      Dart_TypedDataReleaseData(protocol_handle);
+      Dart_PropagateError(Dart_NewApiError(
+          "Unexpected type for protocol (expected valid Uint8List)."));
+    }
+
+    Dart_Handle setting_handle = Dart_ListGetAt(member, 1);
+    if (Dart_IsError(setting_handle)) {
+      Dart_TypedDataReleaseData(protocol_handle);
+      Dart_PropagateError(setting_handle);
+    }
+
+    uint8_t* setting_string;
+    intptr_t setting_string_len = 0;
+
+    result = Dart_TypedDataAcquireData(setting_handle, &type,
+        reinterpret_cast<void**>(&setting_string), &setting_string_len);
+    if (Dart_IsError(result)) {
+      Dart_TypedDataReleaseData(protocol_handle);
+      Dart_PropagateError(result);
+    }
+
+    if (type != Dart_TypedData_kUint8) {
+      Dart_TypedDataReleaseData(protocol_handle);
+      Dart_TypedDataReleaseData(setting_handle);
+      Dart_PropagateError(Dart_NewApiError(
+          "Unexpected type for setting (expected valid Uint8List)."));
+    }
+
+    int status = SSL_add_application_settings(ssl, protocol_string, protocol_string_len, setting_string, setting_string_len);
+    ASSERT(status == 1);  // The function returns a non-standard status.
+
+    Dart_TypedDataReleaseData(protocol_handle);
+    Dart_TypedDataReleaseData(setting_handle);
+  }
 }
 
 static int UseChainBytesPKCS12(SSL_CTX* context,
@@ -935,6 +990,58 @@ void FUNCTION_NAME(SecurityContext_SetClientAuthoritiesBytes)(
   context->SetClientAuthoritiesBytes(client_authorities_bytes, password);
 }
 
+void FUNCTION_NAME(SecurityContext_SetCiphers)(
+    Dart_NativeArguments args) {
+  SSLCertContext* context = SSLCertContext::GetSecurityContext(args);
+  Dart_Handle ciphers_handle = ThrowIfError(Dart_GetNativeArgument(args, 1));
+
+  ASSERT(context != nullptr);
+  ASSERT(ciphers_handle != nullptr);
+
+  const char *ciphers;
+  ThrowIfError(Dart_StringToCString(ciphers_handle, &ciphers));
+  assert(ciphers != nullptr);
+
+  if (SSL_CTX_set_cipher_list(context->context(), ciphers) == 0) {
+    Dart_ThrowException(DartUtils::NewDartArgumentError(
+        "Invalid cipher string passed to SetCiphers"));
+  }
+}
+
+void FUNCTION_NAME(SecurityContext_SetVerifyAlgorithms)(
+    Dart_NativeArguments args) {
+  SSLCertContext* context = SSLCertContext::GetSecurityContext(args);
+  Dart_Handle algorithms_handle = ThrowIfError(Dart_GetNativeArgument(args, 1));
+
+  ASSERT(context != nullptr);
+  ASSERT(algorithms_handle != nullptr);
+
+  Dart_TypedData_Type algorithms_type;
+  uint16_t* algorithms = nullptr;
+  intptr_t algorithms_len = 0;
+
+  Dart_Handle result = Dart_TypedDataAcquireData(
+      algorithms_handle, &algorithms_type,
+      reinterpret_cast<void**>(&algorithms), &algorithms_len);
+  if (Dart_IsError(result)) {
+    Dart_PropagateError(result);
+  }
+
+  if (algorithms_type != Dart_TypedData_kUint16) {
+    Dart_TypedDataReleaseData(algorithms_handle);
+    Dart_PropagateError(Dart_NewApiError(
+        "Unexpected type for protocols (expected valid Uint16List)."));
+  }
+
+  int status = SSL_CTX_set_verify_algorithm_prefs(context->context(), algorithms, algorithms_len);
+  Dart_TypedDataReleaseData(algorithms_handle);
+
+  if (status == 0) {
+    Dart_ThrowException(DartUtils::NewDartArgumentError(
+        "Invalid list passed to SetVerifyAlgorithms"));
+  }
+}
+
 void FUNCTION_NAME(SecurityContext_UseCertificateChainBytes)(
     Dart_NativeArguments args) {
   SSLCertContext* context = SSLCertContext::GetSecurityContext(args);
@@ -1010,6 +1117,64 @@ void FUNCTION_NAME(SecurityContext_GetMinimumProtocolVersion)(
 
   Dart_SetIntegerReturnValue(args,
                              SSL_CTX_get_min_proto_version(context->context()));
+}
+
+void FUNCTION_NAME(SecurityContext_SetMaximumProtocolVersion)(
+    Dart_NativeArguments args) {
+  SSLCertContext* context = SSLCertContext::GetSecurityContext(args);
+  Dart_Handle protocol_version_handle =
+      ThrowIfError(Dart_GetNativeArgument(args, 1));
+  if (!Dart_IsInteger(protocol_version_handle)) {
+    Dart_ThrowException(DartUtils::NewDartArgumentError(
+        "Non-int argument passed to SetMaximumProtocolVersion"));
+  }
+
+  int protocol_version = DartUtils::GetIntegerValue(protocol_version_handle);
+  if (SSL_CTX_set_max_proto_version(context->context(), protocol_version) ==
+      0) {
+    Dart_ThrowException(DartUtils::NewDartArgumentError(
+        "Invalid protocol version passed to SetMaximumProtocolVersion"));
+  }
+}
+
+void FUNCTION_NAME(SecurityContext_GetMaximumProtocolVersion)(
+    Dart_NativeArguments args) {
+  SSLCertContext* context = SSLCertContext::GetSecurityContext(args);
+
+  Dart_SetIntegerReturnValue(args,
+                             SSL_CTX_get_max_proto_version(context->context()));
+}
+
+void FUNCTION_NAME(SecurityContext_SetUseGrease)(
+    Dart_NativeArguments args) {
+  SSLCertContext* context = SSLCertContext::GetSecurityContext(args);
+  Dart_Handle use_grease_handle = ThrowIfError(Dart_GetNativeArgument(args, 1));
+
+  ASSERT(context != nullptr);
+  ASSERT(use_grease_handle != nullptr);
+
+  if (!Dart_IsBoolean(use_grease_handle)) {
+    Dart_ThrowException(DartUtils::NewDartArgumentError(
+        "Non-boolean argument passed to SetUseGrease"));
+  }
+  bool use = DartUtils::GetBooleanValue(use_grease_handle);
+  SSL_CTX_set_grease_enabled(context->context(), use);
+}
+
+void FUNCTION_NAME(SecurityContext_SetAlwaysAddPadding)(
+    Dart_NativeArguments args) {
+  SSLCertContext* context = SSLCertContext::GetSecurityContext(args);
+  Dart_Handle always_handle = ThrowIfError(Dart_GetNativeArgument(args, 1));
+
+  ASSERT(context != nullptr);
+  ASSERT(always_handle != nullptr);
+
+  if (!Dart_IsBoolean(always_handle)) {
+    Dart_ThrowException(DartUtils::NewDartArgumentError(
+        "Non-boolean argument passed to SetAlwaysAddPadding"));
+  }
+  bool always = DartUtils::GetBooleanValue(always_handle);
+  SSL_CTX_set_always_add_padding(context->context(), always);
 }
 
 void FUNCTION_NAME(X509_Der)(Dart_NativeArguments args) {
