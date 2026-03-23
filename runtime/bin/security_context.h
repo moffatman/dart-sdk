@@ -49,6 +49,8 @@ class SSLCertContext : public ReferenceCounted<SSLCertContext> {
                                   SSL* ssl,
                                   SSLCertContext* context,
                                   bool is_server);
+  static void SetAlps(Dart_Handle settings_handle,
+                      SSL* ssl);
 
   static const char* root_certs_file() { return root_certs_file_; }
   static void set_root_certs_file(const char* root_certs_file) {

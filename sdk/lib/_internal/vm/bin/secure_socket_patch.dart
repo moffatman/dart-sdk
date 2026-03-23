@@ -87,6 +87,9 @@ base class _SecureFilterImpl extends NativeFieldWrapperClass1
     bool requestClientCertificate,
     bool requireClientCertificate,
     Uint8List protocols,
+    List<List<Uint8List>> protocolSettings,
+    bool useNewAlpsCodePoint,
+    bool useEchGrease,
   );
 
   void destroy() {
@@ -220,6 +223,8 @@ class SecurityContext {
 base class _SecurityContext extends NativeFieldWrapperClass1
     implements SecurityContext {
   bool _allowLegacyUnsafeRenegotiation = false;
+  bool _useGrease = true;
+  bool _alwaysAddPadding = false;
 
   _SecurityContext(bool withTrustedRoots, bool withCertCompression) {
     _createNativeContext();
@@ -246,6 +251,16 @@ base class _SecurityContext extends NativeFieldWrapperClass1
       TlsProtocolVersion._fromProtocolVersionConstant(
         _getMinimumProtocolVersion(),
       );
+
+  set maximumTlsProtocolVersion(TlsProtocolVersion version) {
+    _setMaximumProtocolVersion(version._version);
+  }
+
+  TlsProtocolVersion get maximumTlsProtocolVersion =>
+      TlsProtocolVersion._fromProtocolVersionConstant(
+        _getMaximumProtocolVersion(),
+      );
+
 
   @pragma("vm:external-name", "SecurityContext_Allocate")
   external void _createNativeContext();
@@ -300,6 +315,26 @@ base class _SecurityContext extends NativeFieldWrapperClass1
     _setAlpnProtocols(encodedProtocols, isServer);
   }
 
+  @pragma("vm:external-name", "SecurityContext_SetCiphers")
+  external void setCiphers(String ciphers);
+
+  @pragma("vm:external-name", "SecurityContext_SetVerifyAlgorithms")
+  external void setVerifyAlgorithms(Uint16List algorithms);
+
+  set useGrease(bool use) {
+    _useGrease = use;
+    _setUseGrease(use);
+  }
+
+  bool get useGrease => _useGrease;
+
+  set alwaysAddPadding(bool always) {
+    _alwaysAddPadding = always;
+    _setAlwaysAddPadding(always);
+  }
+
+  bool get alwaysAddPadding => _alwaysAddPadding;
+
   @pragma("vm:external-name", "SecurityContext_SetAlpnProtocols")
   external void _setAlpnProtocols(Uint8List protocols, bool isServer);
   @pragma("vm:external-name", "SecurityContext_TrustBuiltinRoots")
@@ -312,6 +347,14 @@ base class _SecurityContext extends NativeFieldWrapperClass1
   external void _setMinimumProtocolVersion(int version);
   @pragma("vm:external-name", "SecurityContext_GetMinimumProtocolVersion")
   external int _getMinimumProtocolVersion();
+  @pragma("vm:external-name", "SecurityContext_SetMaximumProtocolVersion")
+  external void _setMaximumProtocolVersion(int version);
+  @pragma("vm:external-name", "SecurityContext_GetMaximumProtocolVersion")
+  external int _getMaximumProtocolVersion();
+  @pragma("vm:external-name", "SecurityContext_SetUseGrease")
+  external void _setUseGrease(bool use);
+  @pragma("vm:external-name", "SecurityContext_SetAlwaysAddPadding")
+  external void _setAlwaysAddPadding(bool always);
 }
 
 /**

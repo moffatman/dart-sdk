@@ -189,6 +189,10 @@ abstract final class SecurityContext {
   /// or client connections.
   void setAlpnProtocols(List<String> protocols, bool isServer);
 
+  void setCiphers(String ciphers);
+
+  void setVerifyAlgorithms(Uint16List algorithms);
+
   /// If `true`, the [SecurityContext] will allow TLS renegotiation.
   /// Renegotiation is only supported as a client and the HelloRequest must be
   /// received at a quiet point in the application protocol. This is sufficient
@@ -210,6 +214,8 @@ abstract final class SecurityContext {
   ///
   /// The default value is [TlsProtocolVersion.tls1_2].
   abstract TlsProtocolVersion minimumTlsProtocolVersion;
+  
+  abstract TlsProtocolVersion maximumTlsProtocolVersion;
 
   /// Encodes a set of supported protocols for ALPN/NPN usage.
   ///
@@ -310,4 +316,7 @@ abstract final class SecurityContext {
 
     return Uint8List.fromList(bytes);
   }
+
+  abstract bool useGrease;
+  abstract bool alwaysAddPadding;
 }

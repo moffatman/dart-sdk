@@ -79,7 +79,10 @@ class SSLFilter : public ReferenceCounted<SSLFilter> {
                bool is_server,
                bool request_client_certificate,
                bool require_client_certificate,
-               Dart_Handle protocols_handle);
+               Dart_Handle protocols_handle,
+               Dart_Handle settings_handle,
+               bool use_new_alps_codepoint,
+               bool use_ech_grease);
   void Destroy();
   void FreeResources();
   void MarkAsTrusted(Dart_NativeArguments args);
