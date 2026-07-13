@@ -8,6 +8,8 @@ part of "dart:io";
 ///
 /// Only TLS versions supported by `dart:io` are included.
 class TlsProtocolVersion {
+  static const tls1 = TlsProtocolVersion._(0x0301);
+  static const tls1_1 = TlsProtocolVersion._(0x0302);
   /// Transport Layer Security (TLS) Protocol Version 1.2.
   ///
   /// See RFC-5246.
@@ -24,6 +26,8 @@ class TlsProtocolVersion {
 
   static TlsProtocolVersion _fromProtocolVersionConstant(int version) =>
       switch (version) {
+        0x0301 => tls1,
+        0x0302 => tls1_1,
         0x0303 => tls1_2,
         0x0304 => tls1_3,
         _ => throw ArgumentError.value(version, 'version'),
