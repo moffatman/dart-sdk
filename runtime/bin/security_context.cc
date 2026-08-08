@@ -1014,8 +1014,6 @@ void FUNCTION_NAME(SecurityContext_Allocate)(Dart_NativeArguments args) {
 #else
   SSL_CTX_set_cipher_list(ctx, "HIGH:MEDIUM:DES-CBC3-SHA:ECDHE-ECDSA-DES-CBC3-SHA:ECDHE-RSA-DES-CBC3-SHA");
 #endif
-  SSL_CTX_enable_ocsp_stapling(ctx);
-  SSL_CTX_enable_signed_cert_timestamps(ctx);
   SSL_CTX_set_grease_enabled(ctx, 1);
 #if !defined(DART_TARGET_OS_ANDROID)
   SSL_CTX_set_options(ctx, SSL_OP_NO_TICKET);
@@ -1139,6 +1137,24 @@ void FUNCTION_NAME(SecurityContext_AddCertCompression)(
 #else
   SSL_CTX_add_cert_compression_alg(context->context(), TLSEXT_cert_compression_zlib, zlib_compress, zlib_decompress);
 #endif
+}
+
+void FUNCTION_NAME(SecurityContext_AddOcspStapling)(
+    Dart_NativeArguments args) {
+  SSLCertContext* context = SSLCertContext::GetSecurityContext(args);
+
+  ASSERT(context != nullptr);
+
+  SSL_CTX_enable_ocsp_stapling(context->context());
+}
+
+void FUNCTION_NAME(SecurityContext_AddSignedCertTimestamps)(
+    Dart_NativeArguments args) {
+  SSLCertContext* context = SSLCertContext::GetSecurityContext(args);
+
+  ASSERT(context != nullptr);
+
+  SSL_CTX_enable_signed_cert_timestamps(context->context());
 }
 
 void FUNCTION_NAME(SecurityContext_SetAllowTlsRenegotiation)(

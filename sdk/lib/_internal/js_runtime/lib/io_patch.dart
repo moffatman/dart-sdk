@@ -625,7 +625,9 @@ class SecurityContext {
   @patch
   factory SecurityContext({
     bool withTrustedRoots = false,
-    bool withCertCompression = true
+    bool withCertCompression = true,
+    bool withOcspStapling = true,
+    bool withSignedCertTimestamps = true
   }) {
     throw UnsupportedError("SecurityContext constructor");
   }

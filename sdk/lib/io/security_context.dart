@@ -62,7 +62,9 @@ abstract final class SecurityContext {
   /// should be used.
   external factory SecurityContext({
     bool withTrustedRoots = false,
-    bool withCertCompression = true
+    bool withCertCompression = true,
+    bool withOcspStapling = true,
+    bool withSignedCertTimestamps = true
   });
 
   /// The default security context used by most operation requiring one.
