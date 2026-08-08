@@ -12,7 +12,12 @@
 #include <openssl/ssl.h>
 #include <openssl/x509.h>
 
+#if defined(DART_TARGET_OS_ANDROID)
+#include <brotli/decode.h>
+#include <brotli/encode.h>
+#else
 #include <zlib/zlib.h>
+#endif
 
 #include "platform/globals.h"
 
@@ -894,6 +899,62 @@ void FUNCTION_NAME(SecurityContext_UsePrivateKeyBytes)(
                                  "Failure in usePrivateKeyBytes");
 }
 
+#if defined(DART_TARGET_OS_ANDROID)
+static int brotli_compress(SSL* ssl,
+                           CBB* out,
+                           const uint8_t* in,
+                           size_t in_len) {
+  static_cast<void>(ssl);
+
+  size_t output_size = BrotliEncoderMaxCompressedSize(in_len);
+  if (output_size == 0) {
+    return 0;
+  }
+
+  uint8_t* data;
+  if (!CBB_reserve(out, &data, output_size)) {
+    return 0;
+  }
+
+  if (BrotliEncoderCompress(BROTLI_DEFAULT_QUALITY,
+                            BROTLI_DEFAULT_WINDOW,
+                            BROTLI_DEFAULT_MODE,
+                            in_len,
+                            in,
+                            &output_size,
+                            data) == BROTLI_FALSE) {
+    return 0;
+  }
+
+  return CBB_did_write(out, output_size);
+}
+
+static int brotli_decompress(SSL* ssl,
+                             CRYPTO_BUFFER** out,
+                             size_t uncompressed_len,
+                             const uint8_t* in,
+                             size_t in_len) {
+  static_cast<void>(ssl);
+
+  uint8_t* data;
+  CRYPTO_BUFFER* decompressed =
+      CRYPTO_BUFFER_alloc(&data, uncompressed_len);
+  if (decompressed == nullptr) {
+    return 0;
+  }
+
+  size_t output_size = uncompressed_len;
+  if (BrotliDecoderDecompress(in_len, in, &output_size, data) !=
+          BROTLI_DECODER_RESULT_SUCCESS ||
+      output_size != uncompressed_len) {
+    CRYPTO_BUFFER_free(decompressed);
+    return 0;
+  }
+
+  *out = decompressed;
+  return 1;
+}
+#else
 static int zlib_compress(SSL *ssl, CBB *out, const uint8_t *in,
                            size_t in_len) {
   unsigned long out_len = compressBound(in_len);
@@ -938,6 +999,7 @@ static int zlib_decompress(SSL *ssl, CRYPTO_BUFFER **out,
 
   return 1;
 }
+#endif
 
 void FUNCTION_NAME(SecurityContext_Allocate)(Dart_NativeArguments args) {
   SSLFilter::InitializeLibrary();
@@ -1072,9 +1134,11 @@ void FUNCTION_NAME(SecurityContext_AddCertCompression)(
 
   ASSERT(context != nullptr);
 
-  // need to add some sort of algorithm to add the extension
-  // TODO: Android should be brotli here
+#if defined(DART_TARGET_OS_ANDROID)
+  SSL_CTX_add_cert_compression_alg(context->context(), TLSEXT_cert_compression_brotli, brotli_compress, brotli_decompress);
+#else
   SSL_CTX_add_cert_compression_alg(context->context(), TLSEXT_cert_compression_zlib, zlib_compress, zlib_decompress);
+#endif
 }
 
 void FUNCTION_NAME(SecurityContext_SetAllowTlsRenegotiation)(

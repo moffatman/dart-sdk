@@ -550,6 +550,9 @@ template("dart_io") {
 
     defines = []
     deps = [ "//third_party/zlib" ] + extra_deps
+    if (is_android) {
+      deps += [ "//third_party/brotli:brotli_full" ]
+    }
     if (is_mac || is_ios) {
       frameworks = [
         "CoreFoundation.framework",
