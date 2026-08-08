@@ -45,6 +45,8 @@ class SSLCertContext : public ReferenceCounted<SSLCertContext> {
   static SSLCertContext* GetSecurityContext(Dart_NativeArguments args);
   static const char* GetPasswordArgument(Dart_NativeArguments args,
                                          intptr_t index);
+  static void SetQuicTransportParams(Dart_Handle quic_transport_params_handle,
+                                     SSL* ssl);
   static void SetAlpnProtocolList(Dart_Handle protocols_handle,
                                   SSL* ssl,
                                   SSLCertContext* context,

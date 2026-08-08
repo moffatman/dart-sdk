@@ -29,7 +29,7 @@ void BootstrapDartIo() {
   TimerUtils::InitOnce();
   Process::Init();
 #if !defined(DART_IO_SECURE_SOCKET_DISABLED)
-  SSLFilter::Init();
+  BaseSSLFilter::Init();
 #endif
   EventHandler::Start();
 }

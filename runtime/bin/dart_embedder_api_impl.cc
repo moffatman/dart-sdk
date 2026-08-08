@@ -45,7 +45,7 @@ bool InitOnce(char** error) {
   bin::TimerUtils::InitOnce();
   bin::Process::Init();
 #if !defined(DART_IO_SECURE_SOCKET_DISABLED)
-  bin::SSLFilter::Init();
+  bin::BaseSSLFilter::Init();
 #endif
   bin::EventHandler::Start();
   return true;

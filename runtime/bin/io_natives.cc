@@ -22,6 +22,15 @@ namespace bin {
 // builtin_natives.cc instead.
 #define IO_NATIVE_LIST(V)                                                      \
   V(Crypto_GetRandomBytes, 1)                                                  \
+  V(DatagramSecureSocket_AttachNativeSocket, 5)                                \
+  V(DatagramSecureSocket_Connect, 10)                                          \
+  V(DatagramSecureSocket_Init, 2)                                              \
+  V(DatagramSecureSocket_PeerQuicTransportParams, 1)                           \
+  V(DatagramSecureSocket_PeerPreferredAddress, 1)                              \
+  V(DatagramSecureSocket_IsInEarlyData, 1)                                     \
+  V(DatagramSecureSocket_EarlyDataAccepted, 1)                                 \
+  V(DatagramSecureSocket_StartNativePump, 2)                                   \
+  V(DatagramSecureSocket_StopNativePump, 1)                                    \
   V(Directory_Create, 2)                                                       \
   V(Directory_CreateTemp, 2)                                                   \
   V(Directory_Current, 1)                                                      \

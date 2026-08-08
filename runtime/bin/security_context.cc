@@ -57,8 +57,8 @@ int SSLCertContext::CertificateCallback(int preverify_ok,
   int ssl_index = SSL_get_ex_data_X509_STORE_CTX_idx();
   SSL* ssl =
       static_cast<SSL*>(X509_STORE_CTX_get_ex_data(store_ctx, ssl_index));
-  SSLFilter* filter = static_cast<SSLFilter*>(
-      SSL_get_ex_data(ssl, SSLFilter::filter_ssl_index));
+  BaseSSLFilter* filter = static_cast<BaseSSLFilter*>(
+      SSL_get_ex_data(ssl, BaseSSLFilter::filter_ssl_index));
   Dart_Handle callback = filter->bad_certificate_callback();
   if (Dart_IsNull(callback)) {
     return 0;
@@ -90,8 +90,8 @@ int SSLCertContext::CertificateCallback(int preverify_ok,
 }
 
 void SSLCertContext::KeyLogCallback(const SSL* ssl, const char* line) {
-  SSLFilter* filter = static_cast<SSLFilter*>(
-      SSL_get_ex_data(ssl, SSLFilter::filter_ssl_index));
+  BaseSSLFilter* filter = static_cast<BaseSSLFilter*>(
+      SSL_get_ex_data(ssl, BaseSSLFilter::filter_ssl_index));
 
   Dart_Port port = filter->key_log_port();
   if (port != ILLEGAL_PORT) {
@@ -482,6 +482,33 @@ int AlpnCallback(SSL* ssl,
   }
   // TODO(23580): Make failure send a fatal alert instead of ignoring ALPN.
   return SSL_TLSEXT_ERR_NOACK;
+}
+
+void SSLCertContext::SetQuicTransportParams(Dart_Handle quic_transport_params_handle,
+                                            SSL* ssl) {
+  Dart_TypedData_Type quic_type;
+  uint8_t* quic_string = nullptr;
+  intptr_t quic_string_len = 0;
+  int status;
+
+  Dart_Handle result = Dart_TypedDataAcquireData(
+      quic_transport_params_handle, &quic_type,
+      reinterpret_cast<void**>(&quic_string), &quic_string_len);
+  if (Dart_IsError(result)) {
+    Dart_PropagateError(result);
+  }
+
+  if (quic_type != Dart_TypedData_kUint8) {
+    Dart_TypedDataReleaseData(quic_transport_params_handle);
+    Dart_PropagateError(Dart_NewApiError(
+        "Unexpected type for quic (expected valid Uint8List)."));
+  }
+
+  if (quic_string_len > 0) {
+    status = SSL_set_quic_transport_params(ssl, quic_string, quic_string_len);
+    ASSERT(status == 1);
+  }
+  Dart_TypedDataReleaseData(quic_transport_params_handle);
 }
 
 // Sets the protocol list for ALPN on a SSL object or a context.
@@ -1002,7 +1029,7 @@ static int zlib_decompress(SSL *ssl, CRYPTO_BUFFER **out,
 #endif
 
 void FUNCTION_NAME(SecurityContext_Allocate)(Dart_NativeArguments args) {
-  SSLFilter::InitializeLibrary();
+  BaseSSLFilter::InitializeLibrary();
   SSL_CTX* ctx = SSL_CTX_new(TLS_method());
   SSL_CTX_set_verify(ctx, SSL_VERIFY_PEER, SSLCertContext::CertificateCallback);
   SSL_CTX_set_keylog_callback(ctx, SSLCertContext::KeyLogCallback);
@@ -1015,7 +1042,9 @@ void FUNCTION_NAME(SecurityContext_Allocate)(Dart_NativeArguments args) {
   SSL_CTX_set_cipher_list(ctx, "HIGH:MEDIUM:DES-CBC3-SHA:ECDHE-ECDSA-DES-CBC3-SHA:ECDHE-RSA-DES-CBC3-SHA");
 #endif
   SSL_CTX_set_grease_enabled(ctx, 1);
-#if !defined(DART_TARGET_OS_ANDROID)
+#if defined(DART_TARGET_OS_ANDROID)
+  SSL_CTX_set_permute_extensions(ctx, 1);
+#else
   SSL_CTX_set_options(ctx, SSL_OP_NO_TICKET);
 #endif
   SSLCertContext* context = new SSLCertContext(ctx);

@@ -106,10 +106,10 @@ static SecCertificateRef CreateSecCertificateFromX509(X509* cert) {
 
 static ssl_verify_result_t CertificateVerificationCallback(SSL* ssl,
                                                            uint8_t* out_alert) {
-  SSLFilter* filter = static_cast<SSLFilter*>(
-      SSL_get_ex_data(ssl, SSLFilter::filter_ssl_index));
+  BaseSSLFilter* filter = static_cast<BaseSSLFilter*>(
+      SSL_get_ex_data(ssl, BaseSSLFilter::filter_ssl_index));
   SSLCertContext* context = static_cast<SSLCertContext*>(
-      SSL_get_ex_data(ssl, SSLFilter::ssl_cert_context_index));
+      SSL_get_ex_data(ssl, BaseSSLFilter::ssl_cert_context_index));
 
   const X509TrustState* certificate_trust_state =
       filter->certificate_trust_state();
