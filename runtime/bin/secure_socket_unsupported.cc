@@ -148,6 +148,18 @@ void FUNCTION_NAME(SecurityContext_AddCertCompression)(
       "Secure Sockets unsupported on this platform"));
 }
 
+void FUNCTION_NAME(SecurityContext_AddOcspStapling)(
+    Dart_NativeArguments args) {
+  Dart_ThrowException(DartUtils::NewDartArgumentError(
+      "Secure Sockets unsupported on this platform"));
+}
+
+void FUNCTION_NAME(SecurityContext_AddSignedCertTimestamps)(
+    Dart_NativeArguments args) {
+  Dart_ThrowException(DartUtils::NewDartArgumentError(
+      "Secure Sockets unsupported on this platform"));
+}
+
 void FUNCTION_NAME(SecurityContext_SetAllowTlsRenegotiation)(
     Dart_NativeArguments args) {
   Dart_ThrowException(DartUtils::NewDartArgumentError(

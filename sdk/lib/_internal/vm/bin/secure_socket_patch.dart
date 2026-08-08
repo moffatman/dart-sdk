@@ -206,9 +206,11 @@ class SecurityContext {
   @patch
   factory SecurityContext({
     bool withTrustedRoots = false,
-    bool withCertCompression = true
+    bool withCertCompression = true,
+    bool withOcspStapling = true,
+    bool withSignedCertTimestamps = true
   }) {
-    return _SecurityContext(withTrustedRoots, withCertCompression);
+    return _SecurityContext(withTrustedRoots, withCertCompression, withOcspStapling, withSignedCertTimestamps);
   }
 
   @patch
@@ -226,13 +228,19 @@ base class _SecurityContext extends NativeFieldWrapperClass1
   bool _useGrease = true;
   bool _alwaysAddPadding = false;
 
-  _SecurityContext(bool withTrustedRoots, bool withCertCompression) {
+  _SecurityContext(bool withTrustedRoots, bool withCertCompression, bool withOcspStapling, bool withSignedCertTimestamps) {
     _createNativeContext();
     if (withTrustedRoots) {
       _trustBuiltinRoots();
     }
     if (withCertCompression) {
       _addCertCompression();
+    }
+    if (withOcspStapling) {
+      _addOcspStapling();
+    }
+    if (withSignedCertTimestamps) {
+      _addSignedCertTimestamps();
     }
   }
 
@@ -341,6 +349,10 @@ base class _SecurityContext extends NativeFieldWrapperClass1
   external void _trustBuiltinRoots();
   @pragma("vm:external-name", "SecurityContext_AddCertCompression")
   external void _addCertCompression();
+  @pragma("vm:external-name", "SecurityContext_AddOcspStapling")
+  external void _addOcspStapling();
+  @pragma("vm:external-name", "SecurityContext_AddSignedCertTimestamps")
+  external void _addSignedCertTimestamps();
   @pragma("vm:external-name", "SecurityContext_SetAllowTlsRenegotiation")
   external void _setAllowTlsRenegotiation(bool allow);
   @pragma("vm:external-name", "SecurityContext_SetMinimumProtocolVersion")
