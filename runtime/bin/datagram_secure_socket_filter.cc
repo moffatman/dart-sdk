@@ -871,8 +871,13 @@ bool DatagramSSLFilter::ProcessConnectionCommands(const CObjectArray& request,
   const intptr_t open_bidirectional = CObjectIntptr(request[15]).Value();
   const intptr_t open_unidirectional = CObjectIntptr(request[16]).Value();
   const bool native_udp_write_ready = CObjectBool(request[17]).Value();
+  const bool invalid_path_id =
+      path_id < -1 ||
+      (path_id >= 0 &&
+       static_cast<uint64_t>(path_id) >
+           static_cast<uint64_t>(std::numeric_limits<uint32_t>::max()));
   if ((flags & ~(kCloseRequested | kPathValidationRequested)) != 0 ||
-      close_error_code < 0 || path_id < -1 || path_id > UINT32_MAX ||
+      close_error_code < 0 || invalid_path_id ||
       open_bidirectional < 0 || open_bidirectional > 64 ||
       open_unidirectional < 0 || open_unidirectional > 64) {
     return false;
