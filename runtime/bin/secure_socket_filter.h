@@ -9,11 +9,18 @@
 #include <openssl/ssl.h>
 #include <openssl/x509.h>
 
+#include <deque>
+#include <functional>
+#include <limits>
+#include <map>
 #include <memory>
+#include <set>
+#include <vector>
 
 #include "bin/builtin.h"
 #include "bin/reference_counting.h"
 #include "bin/security_context.h"
+#include "platform/synchronization.h"
 #include "platform/utils.h"
 
 namespace dart {
@@ -38,7 +45,7 @@ class X509TrustState {
   DISALLOW_COPY_AND_ASSIGN(X509TrustState);
 };
 
-class SSLFilter : public ReferenceCounted<SSLFilter> {
+class BaseSSLFilter : public ReferenceCounted<BaseSSLFilter> {
  public:
   static void Init();
   static void Cleanup();
@@ -53,38 +60,24 @@ class SSLFilter : public ReferenceCounted<SSLFilter> {
     kFirstEncrypted = kReadEncrypted
   };
 
-  static const intptr_t kApproximateSize;
   static constexpr int kSSLFilterNativeFieldIndex = 0;
 
-  SSLFilter()
+  BaseSSLFilter()
       : callback_error(nullptr),
-        ssl_(nullptr),
-        socket_side_(nullptr),
-        string_start_(nullptr),
-        string_length_(nullptr),
         handshake_complete_(nullptr),
-        bad_certificate_callback_(nullptr),
         in_handshake_(false),
-        hostname_(nullptr) {}
-
-  ~SSLFilter();
+        hostname_(nullptr),
+        ssl_(nullptr),
+        bad_certificate_callback_(nullptr) {}
+  ~BaseSSLFilter();
 
   char* hostname() const { return hostname_; }
   bool is_server() const { return is_server_; }
   bool is_client() const { return !is_server_; }
 
   Dart_Handle Init(Dart_Handle dart_this);
-  void Connect(const char* hostname,
-               SSLCertContext* context,
-               bool is_server,
-               bool request_client_certificate,
-               bool require_client_certificate,
-               Dart_Handle protocols_handle,
-               Dart_Handle settings_handle,
-               bool use_new_alps_codepoint,
-               bool use_ech_grease);
   void Destroy();
-  void FreeResources();
+  virtual void FreeResources();
   void MarkAsTrusted(Dart_NativeArguments args);
   int Handshake(Dart_Port reply_port);
   void GetSelectedProtocol(Dart_NativeArguments args);
@@ -95,18 +88,58 @@ class SSLFilter : public ReferenceCounted<SSLFilter> {
   Dart_Handle bad_certificate_callback() {
     return Dart_HandleFromPersistent(bad_certificate_callback_);
   }
-  int ProcessReadPlaintextBuffer(int start, int end);
-  int ProcessWritePlaintextBuffer(int start, int end);
-  int ProcessReadEncryptedBuffer(int start, int end);
-  int ProcessWriteEncryptedBuffer(int start, int end);
-  bool ProcessAllBuffers(int starts[kNumBuffers],
-                         int ends[kNumBuffers],
-                         bool in_handshake);
+  virtual int ProcessReadPlaintextBuffer(int start, int end) { return 0; }
+  virtual int ProcessWritePlaintextBuffer(int start, int end) { return 0; }
+  virtual int ProcessReadEncryptedBuffer(int start, int end) { return 0; }
+  virtual int ProcessWriteEncryptedBuffer(int start, int end) { return 0; }
+  virtual bool TakeInternalProgress() { return false; }
+  virtual bool TakeWriteReady() { return false; }
+  virtual void HandleEarlyDataRejected() {}
+  virtual void HandleNewSession(SSL_SESSION* session) {}
+  virtual void ProcessTimers() {}
+  virtual int64_t NextTimeoutMillis() { return -1; }
+  virtual bool ProcessAllBuffers(int starts[kNumBuffers],
+                                 int ends[kNumBuffers],
+                                 bool in_handshake);
+  virtual bool PrepareStreamBuffers(const CObjectArray& request,
+                                    intptr_t request_offset,
+                                    intptr_t stream_count) {
+    return stream_count == 0;
+  }
+  virtual bool ProcessStreamBuffers(const CObjectArray& request,
+                                    intptr_t request_offset,
+                                    intptr_t stream_count,
+                                    bool in_handshake,
+                                    CObjectArray* result,
+                                    intptr_t result_offset) {
+    return stream_count == 0;
+  }
+  virtual bool FlushOutgoingDatagrams(int starts[kNumBuffers],
+                                      int ends[kNumBuffers]) {
+    return true;
+  }
+  virtual intptr_t FilterRequestHeaderSize() const {
+    return 2 + kNumBuffers * 2;
+  }
+  virtual intptr_t FilterResponseHeaderSize() const {
+    return kNumBuffers * 2 + 3;
+  }
+  virtual bool ProcessConnectionCommands(const CObjectArray& request,
+                                         CObjectArray* result) {
+    return true;
+  }
+  virtual bool ProcessConnectionEvents(CObjectArray* result) { return true; }
+  virtual CObject* ProcessQuicEvents(const CObjectArray& request) {
+    return CObject::IllegalArgumentError();
+  }
+  virtual void AfterFilterRequest() {}
   Dart_Handle PeerCertificate();
   static void InitializeLibrary();
   Dart_Handle callback_error;
 
   static CObject* ProcessFilterRequest(const CObjectArray& request);
+  static CObject* ProcessQuicEventsRequest(const CObjectArray& request);
+  static int NewSessionCallback(SSL* ssl, SSL_SESSION* session);
 
   // The index of the external data field in _ssl that points to the SSLFilter.
   static int filter_ssl_index;
@@ -119,39 +152,67 @@ class SSLFilter : public ReferenceCounted<SSLFilter> {
   }
   Dart_Port reply_port() const { return reply_port_; }
   static Dart_Port TrustEvaluateReplyPort();
+  virtual Mutex* process_mutex() { return nullptr; }
+
+ protected:
+  static bool library_initialized_;
+  Dart_PersistentHandle handshake_complete_;
+  bool in_handshake_;
+  char* hostname_;
+  bool is_server_;
+  SSL* ssl_;
+  int BufferSize(BufferIndex index);
+  virtual Dart_Handle InitializeBuffers(Dart_Handle dart_this) = 0;
+  int buffer_size_;
+  int encrypted_buffer_size_;
+  Dart_PersistentHandle dart_buffer_objects_[kNumBuffers];
+  static bool IsBufferEncrypted(int i) {
+    return static_cast<BufferIndex>(i) >= kFirstEncrypted;
+  }
 
  private:
-  static const intptr_t kInternalBIOSize;
-  static bool library_initialized_;
   static Mutex* mutex_;  // To protect library initialization.
   static Dart_Port trust_evaluate_reply_port_;
 
-  SSL* ssl_;
-  BIO* socket_side_;
   // Currently only one(root) certificate is evaluated via
   // TrustEvaluate mechanism.
   std::unique_ptr<X509TrustState> certificate_trust_state_;
 
-  uint8_t* buffers_[kNumBuffers];
-  int buffer_size_;
-  int encrypted_buffer_size_;
-  Dart_PersistentHandle string_start_;
-  Dart_PersistentHandle string_length_;
-  Dart_PersistentHandle dart_buffer_objects_[kNumBuffers];
-  Dart_PersistentHandle handshake_complete_;
   Dart_PersistentHandle bad_certificate_callback_;
-  bool in_handshake_;
-  bool is_server_;
-  char* hostname_;
 
   Dart_Port reply_port_ = ILLEGAL_PORT;
   Dart_Port key_log_port_ = ILLEGAL_PORT;
+};
 
-  static bool IsBufferEncrypted(int i) {
-    return static_cast<BufferIndex>(i) >= kFirstEncrypted;
-  }
-  Dart_Handle InitializeBuffers(Dart_Handle dart_this);
-  void InitializePlatformData();
+class SSLFilter : public BaseSSLFilter {
+ public:
+  static const intptr_t kApproximateSize;
+
+  SSLFilter() : BaseSSLFilter(), socket_side_(nullptr) {}
+
+  void Connect(const char* hostname,
+               SSLCertContext* context,
+               bool is_server,
+               bool request_client_certificate,
+               bool require_client_certificate,
+               Dart_Handle protocols_handle,
+               Dart_Handle settings_handle,
+               bool use_new_alps_codepoint,
+               bool use_ech_grease);
+  void FreeResources() override;
+  int ProcessReadPlaintextBuffer(int start, int end) override;
+  int ProcessWritePlaintextBuffer(int start, int end) override;
+  int ProcessReadEncryptedBuffer(int start, int end) override;
+  int ProcessWriteEncryptedBuffer(int start, int end) override;
+
+ protected:
+  virtual Dart_Handle InitializeBuffers(Dart_Handle dart_this) override;
+
+ private:
+  static const intptr_t kInternalBIOSize;
+
+  uint8_t* buffers_[kNumBuffers];
+  BIO* socket_side_;
 
   DISALLOW_COPY_AND_ASSIGN(SSLFilter);
 };

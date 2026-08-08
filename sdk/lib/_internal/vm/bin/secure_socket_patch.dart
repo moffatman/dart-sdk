@@ -50,49 +50,20 @@ class _SecureSocket extends _Socket implements SecureSocket {
   }
 }
 
-/**
- * _SecureFilterImpl wraps a filter that encrypts and decrypts data travelling
- * over an encrypted socket.  The filter also handles the handshaking
- * and certificate verification.
- *
- * The filter exposes its input and output buffers as Dart objects that
- * are backed by an external C array of bytes, so that both Dart code and
- * native code can access the same data.
- */
-@pragma("vm:entry-point")
-base class _SecureFilterImpl extends NativeFieldWrapperClass1
-    implements _SecureFilter {
-  // Performance is improved if a full buffer of plaintext fits
-  // in the encrypted buffer, when encrypted.
-  // SIZE and ENCRYPTED_SIZE are referenced from C++.
-  @pragma("vm:entry-point")
-  static final int SIZE = 8 * 1024;
-  @pragma("vm:entry-point")
-  static final int ENCRYPTED_SIZE = 10 * 1024;
+@patch
+class _DatagramSecureFilter {
+  @patch
+  factory _DatagramSecureFilter._(bool useNativeUdp) =>
+      _DatagramSecureFilterImpl._(useNativeUdp);
+}
 
-  _SecureFilterImpl._() {
-    buffers = <_ExternalBuffer>[
-      for (int i = 0; i < _RawSecureSocket.bufferCount; ++i)
-        _ExternalBuffer(
-          _RawSecureSocket._isBufferEncrypted(i) ? ENCRYPTED_SIZE : SIZE,
-        ),
-    ];
-  }
-
-  @pragma("vm:external-name", "SecureSocket_Connect")
-  external void connect(
-    String hostName,
-    SecurityContext context,
-    bool isServer,
-    bool requestClientCertificate,
-    bool requireClientCertificate,
-    Uint8List protocols,
-    List<List<Uint8List>> protocolSettings,
-    bool useNewAlpsCodePoint,
-    bool useEchGrease,
-  );
+abstract base class _BaseSecureFilterImpl<BufferType> extends NativeFieldWrapperClass1
+    implements _BaseSecureFilter<BufferType> {
+  bool _destroyed = false;
 
   void destroy() {
+    if (_destroyed) return;
+    _destroyed = true;
     buffers = null;
     _destroy();
   }
@@ -112,6 +83,7 @@ base class _SecureFilterImpl extends NativeFieldWrapperClass1
   );
 
   Future<bool> handshake() {
+    if (_destroyed) return Future<bool>.value(false);
     Completer<bool> evaluatorCompleter = Completer<bool>();
 
     ReceivePort rpEvaluateResponse = ReceivePort();
@@ -127,6 +99,11 @@ base class _SecureFilterImpl extends NativeFieldWrapperClass1
       int certificatePtr = list[1] as int;
       // Make sure certificatePtr gets released.
       X509Certificate certificate = _newX509CertificateWrapper(certificatePtr);
+      if (_destroyed) {
+        evaluatorCompleter.complete(false);
+        rpEvaluateResponse.close();
+        return;
+      }
       if (!isTrusted) {
         if (badCertificateCallback != null) {
           try {
@@ -167,8 +144,7 @@ base class _SecureFilterImpl extends NativeFieldWrapperClass1
   @pragma("vm:external-name", "SecureSocket_GetSelectedProtocol")
   external String? selectedProtocol();
 
-  @pragma("vm:external-name", "SecureSocket_Init")
-  external void init();
+  void init();
 
   @pragma("vm:external-name", "SecureSocket_PeerCertificate")
   external X509Certificate? get peerCertificate;
@@ -198,7 +174,54 @@ base class _SecureFilterImpl extends NativeFieldWrapperClass1
   external int _pointer();
 
   @pragma("vm:entry-point")
-  List<_ExternalBuffer>? buffers;
+  List<BufferType>? buffers;
+}
+
+/**
+ * _SecureFilterImpl wraps a filter that encrypts and decrypts data travelling
+ * over an encrypted socket.  The filter also handles the handshaking
+ * and certificate verification.
+ *
+ * The filter exposes its input and output buffers as Dart objects that
+ * are backed by an external C array of bytes, so that both Dart code and
+ * native code can access the same data.
+ */
+@pragma("vm:entry-point")
+base class _SecureFilterImpl extends _BaseSecureFilterImpl<_ExternalBuffer>
+    implements _SecureFilter {
+  // Performance is improved if a full buffer of plaintext fits
+  // in the encrypted buffer, when encrypted.
+  // SIZE and ENCRYPTED_SIZE are referenced from C++.
+  @pragma("vm:entry-point")
+  static final int SIZE = 8 * 1024;
+  @pragma("vm:entry-point")
+  static final int ENCRYPTED_SIZE = 10 * 1024;
+
+  _SecureFilterImpl._() {
+    buffers = <_ExternalBuffer>[
+      for (int i = 0; i < _RawSecureSocket.bufferCount; ++i)
+        _ExternalBuffer(
+          _RawSecureSocket._isBufferEncrypted(i) ? ENCRYPTED_SIZE : SIZE,
+        ),
+    ];
+  }
+
+  @override
+  @pragma("vm:external-name", "SecureSocket_Init")
+  external void init();
+
+  @pragma("vm:external-name", "SecureSocket_Connect")
+  external void connect(
+    String hostName,
+    SecurityContext context,
+    bool isServer,
+    bool requestClientCertificate,
+    bool requireClientCertificate,
+    Uint8List protocols,
+    List<List<Uint8List>> protocolSettings,
+    bool useNewAlpsCodePoint,
+    bool useEchGrease,
+  );
 }
 
 @patch
@@ -273,7 +296,7 @@ base class _SecurityContext extends NativeFieldWrapperClass1
   @pragma("vm:external-name", "SecurityContext_Allocate")
   external void _createNativeContext();
 
-  static final SecurityContext defaultContext = _SecurityContext(true, true);
+  static final SecurityContext defaultContext = _SecurityContext(true, true, true, true);
 
   void usePrivateKey(String file, {String? password}) {
     List<int> bytes = (File(file)).readAsBytesSync();
@@ -407,4 +430,101 @@ base class _X509CertificateImpl extends NativeFieldWrapperClass1
   external int _startValidity();
   @pragma("vm:external-name", "X509_EndValidity")
   external int _endValidity();
+}
+
+@pragma("vm:entry-point")
+base class _DatagramSecureFilterImpl
+    extends _BaseSecureFilterImpl<_ExternalDatagramBuffer>
+    implements _DatagramSecureFilter {
+  @pragma("vm:entry-point")
+  static final int SIZE =
+      _ExternalDatagramBuffer.slotSize *
+      _ExternalDatagramBuffer.applicationSlotCount;
+  @pragma("vm:entry-point")
+  static final int ENCRYPTED_SIZE =
+      _ExternalDatagramBuffer.slotSize *
+      _ExternalDatagramBuffer.networkInputSlotCount;
+
+  _DatagramSecureFilterImpl._(this.useNativeUdp) {
+    buffers = <_ExternalDatagramBuffer>[
+      for (var i = 0; i < _RawDatagramSecureSocket.bufferCount; i++)
+        _ExternalDatagramBuffer(
+          useNativeUdp && i == _RawDatagramSecureSocket.readEncryptedId
+              ? _ExternalDatagramBuffer.nativeHandshakeInputSlotCount
+              : useNativeUdp && i == _RawDatagramSecureSocket.writeEncryptedId
+              ? 0
+              : i == _RawDatagramSecureSocket.readEncryptedId
+              ? _ExternalDatagramBuffer.networkInputSlotCount
+              : i == _RawDatagramSecureSocket.writeEncryptedId
+              ? _ExternalDatagramBuffer.networkOutputSlotCount
+              : _ExternalDatagramBuffer.applicationSlotCount,
+        ),
+    ];
+  }
+
+  final bool useNativeUdp;
+
+  @override
+  void init() => _init(useNativeUdp);
+
+  @pragma("vm:external-name", "DatagramSecureSocket_Init")
+  external void _init(bool useNativeUdp);
+
+  @override
+  void attachNativeSocket(
+    RawDatagramSocket socket,
+    InternetAddress remoteAddress,
+    int remotePort,
+    int pathId,
+  ) {
+    final rawSocket = socket as _RawDatagramSocket;
+    final address = remoteAddress as _InternetAddress;
+    _attachNativeSocket(
+      rawSocket._socket,
+      address._in_addr,
+      remotePort,
+      pathId,
+    );
+  }
+
+  @pragma('vm:external-name', 'DatagramSecureSocket_AttachNativeSocket')
+  external void _attachNativeSocket(
+    _NativeSocket socket,
+    Uint8List remoteAddress,
+    int remotePort,
+    int pathId,
+  );
+
+  @override
+  @pragma('vm:external-name', 'DatagramSecureSocket_StartNativePump')
+  external bool startNativePump(SendPort notificationPort);
+
+  @override
+  @pragma('vm:external-name', 'DatagramSecureSocket_StopNativePump')
+  external void stopNativePump();
+
+  @pragma('vm:external-name', 'DatagramSecureSocket_Connect')
+  external void connect(
+    String hostName,
+    SecurityContext context,
+    bool isServer,
+    Uint8List protocols,
+    List<List<Uint8List>> protocolSettings,
+    bool useEchGrease,
+    Uint8List initialToken,
+    Uint8List resumptionState,
+    bool enableEarlyData,
+  );
+
+  @pragma('vm:external-name', 'DatagramSecureSocket_PeerQuicTransportParams')
+  external Uint8List peerQuicTransportParameters();
+
+  @pragma('vm:external-name', 'DatagramSecureSocket_PeerPreferredAddress')
+  external Uint8List? peerPreferredAddress();
+
+  @pragma('vm:external-name', 'DatagramSecureSocket_IsInEarlyData')
+  external bool isInEarlyData();
+
+  @pragma('vm:external-name', 'DatagramSecureSocket_EarlyDataAccepted')
+  external bool earlyDataAccepted();
 }
