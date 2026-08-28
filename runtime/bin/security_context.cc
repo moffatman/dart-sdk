@@ -898,6 +898,7 @@ void FUNCTION_NAME(SecurityContext_UsePrivateKeyBytes)(
   SSLCertContext* context = SSLCertContext::GetSecurityContext(args);
   const char* password = SSLCertContext::GetPasswordArgument(args, 2);
 
+  ERR_clear_error();
   int status;
   EVP_PKEY* key;
   {
@@ -905,9 +906,11 @@ void FUNCTION_NAME(SecurityContext_UsePrivateKeyBytes)(
     key = GetPrivateKey(bio.bio(), password);
   }
   if (key == nullptr) {
+    ERR_clear_error();
     Dart_ThrowException(DartUtils::NewDartArgumentError(
         "Expected private key, but none was found"));
   }
+  ERR_clear_error();
   status = SSL_CTX_use_PrivateKey(context->context(), key);
   // SSL_CTX_use_PrivateKey increments the reference count of key on success,
   // so we have to call EVP_PKEY_free on both success and failure.
@@ -1058,6 +1061,7 @@ void FUNCTION_NAME(SecurityContext_SetTrustedCertificatesBytes)(
 
   ASSERT(context != nullptr);
   ASSERT(password != nullptr);
+  ERR_clear_error();
   context->SetTrustedCertificatesBytes(cert_bytes, password);
 }
 
@@ -1071,6 +1075,7 @@ void FUNCTION_NAME(SecurityContext_SetClientAuthoritiesBytes)(
   ASSERT(context != nullptr);
   ASSERT(password != nullptr);
 
+  ERR_clear_error();
   context->SetClientAuthoritiesBytes(client_authorities_bytes, password);
 }
 
@@ -1086,7 +1091,9 @@ void FUNCTION_NAME(SecurityContext_SetCiphers)(
   ThrowIfError(Dart_StringToCString(ciphers_handle, &ciphers));
   assert(ciphers != nullptr);
 
+  ERR_clear_error();
   if (SSL_CTX_set_cipher_list(context->context(), ciphers) == 0) {
+    ERR_clear_error();
     Dart_ThrowException(DartUtils::NewDartArgumentError(
         "Invalid cipher string passed to SetCiphers"));
   }
@@ -1117,10 +1124,12 @@ void FUNCTION_NAME(SecurityContext_SetVerifyAlgorithms)(
         "Unexpected type for protocols (expected valid Uint16List)."));
   }
 
+  ERR_clear_error();
   int status = SSL_CTX_set_verify_algorithm_prefs(context->context(), algorithms, algorithms_len);
   Dart_TypedDataReleaseData(algorithms_handle);
 
   if (status == 0) {
+    ERR_clear_error();
     Dart_ThrowException(DartUtils::NewDartArgumentError(
         "Invalid list passed to SetVerifyAlgorithms"));
   }
@@ -1135,6 +1144,7 @@ void FUNCTION_NAME(SecurityContext_UseCertificateChainBytes)(
   ASSERT(context != nullptr);
   ASSERT(password != nullptr);
 
+  ERR_clear_error();
   int status = context->UseCertificateChainBytes(cert_chain_bytes, password);
 
   SecureSocketUtils::CheckStatus(status, "TlsException",
