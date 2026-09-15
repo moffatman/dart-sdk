@@ -674,6 +674,14 @@ class _SecureFilter {
 }
 
 @patch
+class _DatagramSecureFilter {
+  @patch
+  factory _DatagramSecureFilter._(bool useNativeUdp) {
+    throw UnsupportedError("_DatagramSecureFilter._DatagramSecureFilter");
+  }
+}
+
+@patch
 class _StdIOUtils {
   @patch
   static Stdin _getStdioInputStream(int fd) {

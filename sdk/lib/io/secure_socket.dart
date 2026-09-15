@@ -2364,8 +2364,8 @@ class _RawDatagramSecureSocket extends Stream<RawSocketEvent> implements RawData
   @override
   void streamReset(int streamId, {int errorCode = 0}) {
     if (_status != connectedStatus || _closing || _termination != null) return;
-    if (errorCode < 0 || errorCode > 0x3fffffffffffffff) {
-      throw RangeError.range(errorCode, 0, 0x3fffffffffffffff, 'errorCode');
+    if (errorCode < 0 || errorCode > 0x1fffffffffffff) {
+      throw RangeError.range(errorCode, 0, 0x1fffffffffffff, 'errorCode');
     }
     final state = _applicationStreams[streamId];
     if (state == null) return;
@@ -2378,8 +2378,8 @@ class _RawDatagramSecureSocket extends Stream<RawSocketEvent> implements RawData
   @override
   void streamStopSending(int streamId, {int errorCode = 0}) {
     if (_status != connectedStatus || _closing || _termination != null) return;
-    if (errorCode < 0 || errorCode > 0x3fffffffffffffff) {
-      throw RangeError.range(errorCode, 0, 0x3fffffffffffffff, 'errorCode');
+    if (errorCode < 0 || errorCode > 0x1fffffffffffff) {
+      throw RangeError.range(errorCode, 0, 0x1fffffffffffff, 'errorCode');
     }
     final state = _applicationStreams[streamId];
     if (state == null) return;
